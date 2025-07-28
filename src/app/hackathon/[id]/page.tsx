@@ -23,25 +23,41 @@ export default function HackathonPage() {
       if (hackathonData) {
         setHackathon(hackathonData)
         HackathonStorage.setCurrentHackathonId(hackathonData.id)
-        fetchTeamData()
-        
-        // Set up automatic polling every minute
-        const interval = setInterval(() => {
-          fetchTeamData(true)
-        }, 60000)
-        
-        return () => clearInterval(interval)
+        setLoading(false)
       } else {
         router.push('/')
       }
     }
   }, [params.id, router])
 
+  useEffect(() => {
+    if (hackathon) {
+      fetchTeamData()
+      
+      // Set up automatic polling every minute
+      const interval = setInterval(() => {
+        fetchTeamData(true)
+      }, 60000)
+      
+      return () => clearInterval(interval)
+    }
+  }, [hackathon])
+
   const fetchTeamData = async (showRefreshing = false) => {
+    if (!hackathon) return
+    
     if (showRefreshing) setRefreshing(true)
     
     try {
-      const data = await apiClient.get(`/api/teams?hackathonId=${params.id}`)
+      const repositories = hackathon.repositories.map(repo => repo.url)
+      
+      if (repositories.length === 0) {
+        setTeams([])
+        setLastUpdated(new Date().toLocaleTimeString())
+        return
+      }
+
+      const data = await apiClient.post('/api/teams', { repositories })
       setTeams(data)
       setLastUpdated(new Date().toLocaleTimeString())
     } catch (error) {
@@ -54,9 +70,12 @@ export default function HackathonPage() {
   }
 
   const handleManualRefresh = async () => {
+    if (!hackathon) return
+    
     setRefreshing(true)
     try {
-      await apiClient.post('/api/teams/refresh', { hackathonId: params.id })
+      const repositories = hackathon.repositories.map(repo => repo.url)
+      await apiClient.post('/api/teams/refresh', { repositories })
       await fetchTeamData()
     } catch (error) {
       console.error('Failed to refresh data:', error)
@@ -123,35 +142,37 @@ export default function HackathonPage() {
         </div>
       </div>
 
-      {/* Header Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-hacktion-gray rounded-lg p-6 border border-gray-700">
-          <h3 className="text-lg font-semibold text-hacktion-orange mb-2">
-            総チーム数
-          </h3>
-          <p className="text-3xl font-bold">{teams.length}</p>
+      {/* Header Stats - Only show when teams exist */}
+      {teams.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="bg-hacktion-gray rounded-lg p-6 border border-gray-700">
+            <h3 className="text-lg font-semibold text-hacktion-orange mb-2">
+              総チーム数
+            </h3>
+            <p className="text-3xl font-bold">{teams.length}</p>
+          </div>
+          
+          <div className="bg-hacktion-gray rounded-lg p-6 border border-gray-700">
+            <h3 className="text-lg font-semibold text-green-400 mb-2">
+              最も活発なチーム
+            </h3>
+            <p className="text-xl font-bold">{mostActiveTeam?.name || 'N/A'}</p>
+            <p className="text-sm text-gray-400">
+              {mostActiveTeam?.commits_today || 0} 今日のコミット
+            </p>
+          </div>
+          
+          <div className="bg-hacktion-gray rounded-lg p-6 border border-gray-700">
+            <h3 className="text-lg font-semibold text-red-400 mb-2">
+              要注意チーム
+            </h3>
+            <p className="text-xl font-bold">{leastActiveTeam?.name || 'N/A'}</p>
+            <p className="text-sm text-gray-400">
+              {leastActiveTeam?.commits_today || 0} 今日のコミット
+            </p>
+          </div>
         </div>
-        
-        <div className="bg-hacktion-gray rounded-lg p-6 border border-gray-700">
-          <h3 className="text-lg font-semibold text-green-400 mb-2">
-            最も活発なチーム
-          </h3>
-          <p className="text-xl font-bold">{mostActiveTeam?.name || 'N/A'}</p>
-          <p className="text-sm text-gray-400">
-            {mostActiveTeam?.commits_today || 0} 今日のコミット
-          </p>
-        </div>
-        
-        <div className="bg-hacktion-gray rounded-lg p-6 border border-gray-700">
-          <h3 className="text-lg font-semibold text-red-400 mb-2">
-            要注意チーム
-          </h3>
-          <p className="text-xl font-bold">{leastActiveTeam?.name || 'N/A'}</p>
-          <p className="text-sm text-gray-400">
-            {leastActiveTeam?.commits_today || 0} 今日のコミット
-          </p>
-        </div>
-      </div>
+      )}
 
       {/* Teams Grid */}
       <div className="flex justify-between items-center">

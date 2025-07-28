@@ -2,24 +2,18 @@ import { NextResponse } from 'next/server';
 import { GitHubService } from '@/lib/github';
 import { db } from '@/lib/database';
 
-export async function GET(request: Request) {
+export async function POST(request: Request) {
   try {
-    const url = new URL(request.url);
-    const hackathonId = url.searchParams.get('hackathonId');
+    const body = await request.json();
+    const { repositories } = body;
     
-    if (!hackathonId) {
-      return NextResponse.json([]);
-    }
-
-    const repositories = getConfiguredRepositories(hackathonId);
-    
-    if (repositories.length === 0) {
+    if (!repositories || repositories.length === 0) {
       return NextResponse.json([]);
     }
 
     const gitHubService = new GitHubService();
     const teams = await Promise.all(
-      repositories.map(async (repoUrl) => {
+      repositories.map(async (repoUrl: string) => {
         try {
           return await gitHubService.getRepositoryStats(repoUrl);
         } catch (error) {
@@ -35,6 +29,11 @@ export async function GET(request: Request) {
     console.error('Error fetching team data:', error);
     return NextResponse.json([]);
   }
+}
+
+export async function GET() {
+  // Return empty array for GET requests - use POST instead
+  return NextResponse.json([]);
 }
 
 function getConfiguredRepositories(hackathonId: string): string[] {

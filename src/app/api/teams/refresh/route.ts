@@ -5,20 +5,11 @@ import { db } from '@/lib/database';
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const hackathonId = body.hackathonId;
+    const { repositories } = body;
     
-    if (!hackathonId) {
-      return NextResponse.json(
-        { error: 'Hackathon ID is required' },
-        { status: 400 }
-      );
-    }
-
-    const repositories = getConfiguredRepositories(hackathonId);
-    
-    if (repositories.length === 0) {
+    if (!repositories || repositories.length === 0) {
       return NextResponse.json({ 
-        message: 'No repositories configured for this hackathon',
+        message: 'No repositories provided',
         count: 0
       });
     }
