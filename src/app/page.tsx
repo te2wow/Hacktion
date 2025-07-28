@@ -1,135 +1,218 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { TeamStats } from '@/types';
-import TeamCard from '@/components/TeamCard';
+import { useRouter } from 'next/navigation';
+import { HackathonStorage, type Hackathon } from '@/lib/hackathon';
 import LoadingSpinner from '@/components/LoadingSpinner';
-import { apiClient } from '@/lib/api';
 
 export default function HomePage() {
-  const [teams, setTeams] = useState<TeamStats[]>([]);
+  const router = useRouter();
+  const [hackathons, setHackathons] = useState<Hackathon[]>([]);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [lastUpdated, setLastUpdated] = useState<string>('');
-
-  const fetchTeamData = async (showRefreshing = false) => {
-    if (showRefreshing) setRefreshing(true);
-    
-    try {
-      const data = await apiClient.get('/api/teams');
-      setTeams(data);
-      setLastUpdated(new Date().toLocaleTimeString());
-    } catch (error) {
-      console.error('Failed to fetch team data:', error);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
-
-  const handleManualRefresh = async () => {
-    setRefreshing(true);
-    try {
-      // Force refresh from GitHub API
-      await apiClient.post('/api/teams/refresh');
-      await fetchTeamData();
-    } catch (error) {
-      console.error('Failed to refresh data:', error);
-    } finally {
-      setRefreshing(false);
-    }
-  };
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [formData, setFormData] = useState({
+    name: '',
+    description: '',
+    startDate: '',
+    endDate: ''
+  });
 
   useEffect(() => {
-    fetchTeamData();
-    
-    // Set up auto-refresh every minute
-    const interval = setInterval(() => fetchTeamData(true), 60000);
-    return () => clearInterval(interval);
+    const allHackathons = HackathonStorage.getAllHackathons();
+    setHackathons(allHackathons);
+    setLoading(false);
   }, []);
+
+  const handleCreateHackathon = (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    const hackathon = HackathonStorage.createHackathon({
+      name: formData.name,
+      description: formData.description,
+      startDate: formData.startDate,
+      endDate: formData.endDate,
+      repositories: [],
+      teams: []
+    });
+
+    setHackathons([...hackathons, hackathon]);
+    setShowCreateForm(false);
+    setFormData({ name: '', description: '', startDate: '', endDate: '' });
+    
+    router.push(`/hackathon/${hackathon.id}`);
+  };
+
+  const handleSelectHackathon = (hackathon: Hackathon) => {
+    HackathonStorage.setCurrentHackathonId(hackathon.id);
+    router.push(`/hackathon/${hackathon.id}`);
+  };
+
+  const handleDeleteHackathon = (hackathonId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (confirm('このハッカソンを削除しますか？この操作は取り消せません。')) {
+      HackathonStorage.deleteHackathon(hackathonId);
+      setHackathons(hackathons.filter(h => h.id !== hackathonId));
+    }
+  };
+
+  const handleClearAllData = () => {
+    if (confirm('すべてのハッカソンデータを削除しますか？この操作は取り消せません。')) {
+      HackathonStorage.clearAllData();
+      setHackathons([]);
+    }
+  };
 
   if (loading) {
     return <LoadingSpinner />;
   }
 
-  const mostActiveTeam = teams.length > 0 ? teams.reduce((prev, current) => 
-    prev.commits_today > current.commits_today ? prev : current
-  ) : null;
-
-  const leastActiveTeam = teams.length > 0 ? teams.reduce((prev, current) => 
-    prev.commits_today < current.commits_today ? prev : current
-  ) : null;
-
   return (
     <div className="space-y-6">
-      {/* Header Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-hacktion-gray rounded-lg p-6 border border-gray-700">
-          <h3 className="text-lg font-semibold text-hacktion-orange mb-2">
-            Total Teams
-          </h3>
-          <p className="text-3xl font-bold">{teams.length}</p>
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+        <div>
+          <h1 className="text-3xl font-bold">ハッカソン管理</h1>
+          <p className="text-gray-400 mt-2">ハッカソンを作成・管理してチームの進捗を追跡しましょう</p>
         </div>
-        
-        <div className="bg-hacktion-gray rounded-lg p-6 border border-gray-700">
-          <h3 className="text-lg font-semibold text-green-400 mb-2">
-            Most Active Team
-          </h3>
-          <p className="text-xl font-bold">{mostActiveTeam?.name || 'N/A'}</p>
-          <p className="text-sm text-gray-400">
-            {mostActiveTeam?.commits_today || 0} commits today
-          </p>
-        </div>
-        
-        <div className="bg-hacktion-gray rounded-lg p-6 border border-gray-700">
-          <h3 className="text-lg font-semibold text-red-400 mb-2">
-            Needs Attention
-          </h3>
-          <p className="text-xl font-bold">{leastActiveTeam?.name || 'N/A'}</p>
-          <p className="text-sm text-gray-400">
-            {leastActiveTeam?.commits_today || 0} commits today
-          </p>
+        <div className="flex gap-3">
+          <button
+            onClick={handleClearAllData}
+            className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 font-medium"
+          >
+            データをクリア
+          </button>
+          <button
+            onClick={() => setShowCreateForm(true)}
+            className="px-6 py-3 bg-hacktion-orange text-white rounded hover:bg-opacity-80 font-medium"
+          >
+            新しいハッカソンを作成
+          </button>
         </div>
       </div>
 
-      {/* Teams Grid */}
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold">Team Progress</h2>
-        <div className="flex items-center space-x-4">
-          <button
-            onClick={handleManualRefresh}
-            disabled={refreshing}
-            className="px-4 py-2 bg-hacktion-orange text-white rounded hover:bg-opacity-80 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
-          >
-            {refreshing ? (
-              <>
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                <span>Refreshing...</span>
-              </>
-            ) : (
-              <>
-                <span>🔄</span>
-                <span>Refresh</span>
-              </>
-            )}
-          </button>
-          <div className="text-sm text-gray-400">
-            Last updated: {lastUpdated}
+      {showCreateForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-hacktion-gray p-6 rounded-lg border border-gray-700 w-full max-w-md">
+            <h2 className="text-xl font-bold mb-4">新しいハッカソンを作成</h2>
+            <form onSubmit={handleCreateHackathon} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">ハッカソン名</label>
+                <input
+                  type="text"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded focus:outline-none focus:border-hacktion-orange"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">説明</label>
+                <textarea
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded focus:outline-none focus:border-hacktion-orange"
+                  rows={3}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">開始日</label>
+                <input
+                  type="date"
+                  value={formData.startDate}
+                  onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
+                  className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded focus:outline-none focus:border-hacktion-orange"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">終了日</label>
+                <input
+                  type="date"
+                  value={formData.endDate}
+                  onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
+                  className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded focus:outline-none focus:border-hacktion-orange"
+                  required
+                />
+              </div>
+              <div className="flex space-x-3 pt-4">
+                <button
+                  type="submit"
+                  className="flex-1 px-4 py-2 bg-hacktion-orange text-white rounded hover:bg-opacity-80"
+                >
+                  作成
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowCreateForm(false)}
+                  className="flex-1 px-4 py-2 bg-gray-700 text-white rounded hover:bg-gray-600"
+                >
+                  キャンセル
+                </button>
+              </div>
+            </form>
           </div>
         </div>
-      </div>
+      )}
 
-      {teams.length === 0 ? (
+      {hackathons.length === 0 ? (
         <div className="text-center py-12 bg-hacktion-gray rounded-lg border border-gray-700">
-          <p className="text-gray-400 mb-4">No teams configured yet</p>
-          <p className="text-sm text-gray-500">
-            Add GitHub repository URLs in your environment configuration
+          <div className="text-6xl mb-4">🚀</div>
+          <h2 className="text-xl font-bold mb-2">ハッカソンを作成しましょう</h2>
+          <p className="text-gray-400 mb-6">
+            初めてのハッカソンを作成して、チームの進捗追跡を始めましょう
           </p>
+          <button
+            onClick={() => setShowCreateForm(true)}
+            className="px-6 py-3 bg-hacktion-orange text-white rounded hover:bg-opacity-80 font-medium"
+          >
+            ハッカソンを作成
+          </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-          {teams.map((team) => (
-            <TeamCard key={team.id} team={team} />
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {hackathons.map((hackathon) => (
+            <div
+              key={hackathon.id}
+              onClick={() => handleSelectHackathon(hackathon)}
+              className="bg-hacktion-gray rounded-lg p-6 border border-gray-700 hover:border-hacktion-orange cursor-pointer transition-colors"
+            >
+              <div className="flex justify-between items-start mb-3">
+                <h3 className="text-lg font-bold text-white">{hackathon.name}</h3>
+                <button
+                  onClick={(e) => handleDeleteHackathon(hackathon.id, e)}
+                  className="text-red-400 hover:text-red-300 text-sm"
+                  title="削除"
+                >
+                  ✕
+                </button>
+              </div>
+              
+              <p className="text-gray-400 text-sm mb-4 line-clamp-2">
+                {hackathon.description || 'No description'}
+              </p>
+              
+              <div className="space-y-2 text-sm text-gray-500">
+                <div className="flex justify-between">
+                  <span>期間:</span>
+                  <span>
+                    {new Date(hackathon.startDate).toLocaleDateString('ja-JP')} - {new Date(hackathon.endDate).toLocaleDateString('ja-JP')}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>チーム数:</span>
+                  <span>{hackathon.teams.length}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>リポジトリ数:</span>
+                  <span>{hackathon.repositories.length}</span>
+                </div>
+              </div>
+              
+              <div className="mt-4 pt-4 border-t border-gray-600">
+                <span className="text-xs text-gray-500">
+                  最終更新: {new Date(hackathon.updatedAt).toLocaleDateString('ja-JP')}
+                </span>
+              </div>
+            </div>
           ))}
         </div>
       )}

@@ -19,5 +19,15 @@ export const apiClient = {
       throw new Error(`HTTP error! status: ${response.status}`)
     }
     return response.json()
+  },
+
+  async delete(endpoint: string) {
+    const response = await fetch(endpoint, {
+      method: 'DELETE',
+    })
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+    return response.json()
   }
 }

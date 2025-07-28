@@ -4,11 +4,11 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "dev:api": "npx tsx watch src/server.ts",
+    "dev:api": "npx tsx watch server.ts",
     "dev:all": "concurrently \"npm run dev\" \"npm run dev:api\"",
     "build": "next build",
     "start": "next start",
-    "start:api": "npx tsx src/server.ts",
+    "start:api": "npx tsx server.ts",
     "lint": "next lint",
     "test": "vitest",
     "test:ui": "vitest --ui"

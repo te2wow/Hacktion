@@ -2,25 +2,42 @@ import { NextResponse } from 'next/server';
 import { GitHubService } from '@/lib/github';
 import { db } from '@/lib/database';
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
-    const github = new GitHubService();
-    const repositories = getConfiguredRepositories();
+    const body = await request.json();
+    const hackathonId = body.hackathonId;
     
-    if (repositories.length === 0) {
-      return NextResponse.json({ message: 'No repositories configured' });
+    if (!hackathonId) {
+      return NextResponse.json(
+        { error: 'Hackathon ID is required' },
+        { status: 400 }
+      );
     }
 
-    const teamStats = await github.getMultipleTeamStats(repositories);
+    const repositories = getConfiguredRepositories(hackathonId);
     
-    // Save to database
-    teamStats.forEach(stats => {
-      db.saveTeamStats(stats);
-    });
+    if (repositories.length === 0) {
+      return NextResponse.json({ 
+        message: 'No repositories configured for this hackathon',
+        count: 0
+      });
+    }
+
+    const gitHubService = new GitHubService();
+    let successCount = 0;
+    
+    for (const repoUrl of repositories) {
+      try {
+        await gitHubService.getRepositoryStats(repoUrl);
+        successCount++;
+      } catch (error) {
+        console.error(`Error refreshing ${repoUrl}:`, error);
+      }
+    }
 
     return NextResponse.json({ 
-      message: 'Teams data refreshed successfully',
-      count: teamStats.length 
+      message: 'Team data refreshed successfully',
+      count: successCount
     });
   } catch (error) {
     console.error('Error refreshing team data:', error);
@@ -31,20 +48,21 @@ export async function POST() {
   }
 }
 
-function getConfiguredRepositories(): string[] {
-  const dbRepos = db.getActiveRepositories();
-  if (dbRepos.length > 0) {
-    return dbRepos;
+function getConfiguredRepositories(hackathonId: string): string[] {
+  if (typeof window !== 'undefined') {
+    return [];
   }
-
-  const repoList = process.env.GITHUB_REPOSITORIES;
-  if (repoList) {
-    return repoList.split(',').map(repo => repo.trim());
+  
+  try {
+    const { HackathonStorage } = require('@/lib/hackathon');
+    const hackathon = HackathonStorage.getHackathon(hackathonId);
+    
+    if (hackathon && hackathon.repositories) {
+      return hackathon.repositories.map((repo: any) => repo.url);
+    }
+  } catch (error) {
+    console.error('Error loading hackathon data:', error);
   }
-
-  return [
-    'https://github.com/vercel/next.js',
-    'https://github.com/facebook/react',
-    'https://github.com/microsoft/vscode',
-  ];
+  
+  return [];
 }
